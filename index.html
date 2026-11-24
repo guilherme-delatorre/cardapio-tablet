@@ -46,7 +46,14 @@
   #colDir { width:44%; padding-left:0.2em; }
   #etiqueta { font-size:0.75em; text-transform:uppercase; letter-spacing:0.12em; color:#C8553D; font-weight:bold; }
   #nome { font-size:1.6em; line-height:1.15em; font-weight:bold; margin:0.15em 0 0.35em; }
-  #ingWrap { overflow:hidden; }
+  #ingBox { position:relative; }
+  #ingWrap { overflow-x:hidden; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+    -webkit-user-select:none; user-select:none; }
+  /* aviso de que há mais ingredientes: some quando chega ao fim da lista */
+  #ingMais { display:none; position:absolute; left:0; right:0; bottom:0; height:1.6em; pointer-events:none;
+    background:-webkit-linear-gradient(top, rgba(255,255,255,0), #fff 75%); background:linear-gradient(to bottom, rgba(255,255,255,0), #fff 75%);
+    text-align:center; color:#C8553D; font-size:0.8em; line-height:2.2em; font-weight:bold; }
+  #ingBox.mais #ingMais { display:block; }
   #ingredientes { list-style:none; font-size:0.95em; line-height:1.45em; }
   #ingredientes li:before { content:"• "; color:#4F7C5A; font-weight:bold; }
   #video { width:100%; border-radius:0.5em; background:#2B2118 center center no-repeat;
@@ -84,6 +91,7 @@
   #fechar { position:absolute; left:0; right:0; bottom:0; text-align:center; color:#fff; background:#C8553D;
     font-size:1.2em; font-weight:bold; padding:0.7em 0; }
   #status { position:absolute; right:0.6em; bottom:0.15em; font-size:0.55em; color:#B9A88C; }
+  #planilha { position:absolute; left:0.3em; bottom:0; font-size:0.55em; color:#B9A88C; padding:0.3em 0.6em; }
 </style>
 </head>
 <body>
@@ -96,7 +104,7 @@
     <div class="col" id="colDir">
       <div id="etiqueta">Prato de hoje</div>
       <div id="nome">Carregando…</div>
-      <div id="ingWrap"><ul id="ingredientes"></ul></div>
+      <div id="ingBox"><div id="ingWrap"><ul id="ingredientes"></ul></div><div id="ingMais">▼ arraste para ver mais</div></div>
       <div id="video"></div>
     </div>
   </div>
@@ -107,6 +115,7 @@
   <div id="recado"><div id="recadoTxt"></div></div>
 </div>
 <div id="status"></div>
+<div id="planilha">✎ editar cardápio</div>
 <div id="player"><div id="fechar">✕ Fechar vídeo</div></div>
 
 <script>
@@ -118,7 +127,9 @@ var CONFIG = {
   ATUALIZAR_MIN: 10,            // busca a planilha de novo a cada X minutos
   VOLTAR_HOJE_SEG: 90,          // depois de tocar em outro dia, volta para hoje após X segundos
   SEMANA_COMECA_SEGUNDA: false, // false = domingo primeiro
-  RECADO_PADRAO: 'Bom apetite! 😊'
+  RECADO_PADRAO: 'Bom apetite! 😊',
+  // link aberto pelo "✎ editar cardápio" (canto de baixo, à esquerda)
+  LINK_PLANILHA: 'https://docs.google.com/spreadsheets/d/1uNa7WL9nqg9LG2rDGXdFQ1WjixbBDuD3sgYimkrUCVU/edit'
 };
 
 /* ===================== UTILITÁRIOS ===================== */
@@ -277,6 +288,7 @@ function renderPrato(){
     $('nome').innerHTML = esc(p.nome);
     var h = ''; for (var j = 0; j < p.ingredientes.length; j++) h += '<li>' + esc(p.ingredientes[j]) + '</li>';
     $('ingredientes').innerHTML = h;
+    $('ingWrap').scrollTop = 0;
     if (p.foto){ $('foto').style.backgroundImage = 'url("' + p.foto + '")'; $('foto').innerHTML = ''; }
     else { $('foto').style.backgroundImage = 'none'; $('foto').innerHTML = '<div class="semFoto">' + esc(iniciais(p.nome)) + '</div>'; }
     renderVideo(p.video);
@@ -384,8 +396,12 @@ function layout(){
   $('opcoes').style.height = Math.round(interno * 0.30 - base * 0.5) + 'px';
   $('video').style.height = Math.round(interno * 0.38) + 'px';
   $('topo').style.height = hTopo + 'px';
-  var usado = $('etiqueta').offsetHeight + $('nome').offsetHeight + base * 0.8;
-  $('ingWrap').style.height = Math.max(0, Math.round(interno - interno * 0.38 - usado)) + 'px';
+  // ingredientes: ocupam exatamente o espaço entre o nome e o vídeo (o resto rola com o dedo)
+  var hVideo = Math.round(interno * 0.38);
+  var fundoCol = $('topo').getBoundingClientRect().top + hTopo - pad;
+  var topoIng = $('ingWrap').getBoundingClientRect().top;
+  $('ingWrap').style.height = Math.max(0, Math.floor(fundoCol - topoIng - hVideo - base * 0.4)) + 'px';
+  avisoMais();
 
   $('opcoes').style.marginTop = Math.round(base * 0.5) + 'px';
   $('recado').style.height = hRecado + 'px';
@@ -400,6 +416,12 @@ function layout(){
     if (Math.abs(sobra) < 3) break;
     hCel = Math.max(20, hCel + Math.floor(sobra / linhas));
   }
+}
+
+/* mostra "arraste para ver mais" enquanto houver ingredientes escondidos abaixo */
+function avisoMais(){
+  var w = $('ingWrap'), resta = w.scrollHeight - w.clientHeight - w.scrollTop;
+  $('ingBox').className = resta > 4 ? 'mais' : '';
 }
 
 /* ===================== MODO DEMONSTRAÇÃO ===================== */
@@ -430,6 +452,9 @@ function dadosDemo(){
 /* ===================== INÍCIO ===================== */
 window.onresize = function(){ layout(); };
 $('fechar').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); fecharVideo(); };
+$('ingWrap').onscroll = function(){ avisoMais(); agendarVolta(); };
+// abre a planilha na mesma janela (o Fully bloqueia pop-ups); para voltar, use o botão Voltar do Android
+$('planilha').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); window.location.href = CONFIG.LINK_PLANILHA; };
 document.body.onclick = function(){ if ($('player').style.display === 'block') return; if (chave(EST.dia) !== chave(hoje()) || EST.escolhido) agendarVolta(); };
 atualizar();
 setInterval(atualizar, CONFIG.ATUALIZAR_MIN * 60 * 1000);

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cardápio do mês</title>
+<!--
+  CARDÁPIO DIGITAL — tela única para tablet (modo quiosque)
+  ---------------------------------------------------------
+  Lê a Google Planilha "Cardápio do tablet" (abas Calendario e Pratos).
+
+  Aba "Calendario":  data | prato | opcao 1 | opcao 2 | opcao 3 | recado
+  Aba "Pratos":      nome | ingredientes | foto | video
+    - ingredientes: separados por ";" (ou um por linha dentro da célula)
+    - foto: link de imagem OU link do Google Drive (arquivo compartilhado)
+    - video: link do YouTube
+-->
+<style>
+  * { margin:0; padding:0; -webkit-box-sizing:border-box; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#FBF6EE; color:#2B2118;
+    font-family: "Roboto", "Helvetica Neue", Arial, sans-serif; -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0); }
+  #app { padding:0.6em; }
+
+  /* ---------- Bloco do prato ---------- */
+  #topo { display:table; width:100%; table-layout:fixed; background:#fff; border-radius:0.6em;
+    -webkit-box-shadow:0 0.1em 0.4em rgba(43,33,24,.12); box-shadow:0 0.1em 0.4em rgba(43,33,24,.12); }
+  .col { display:table-cell; vertical-align:top; padding:0.6em; }
+  #colEsq { width:56%; }
+  #foto { width:100%; border-radius:0.5em; background:#EADFCC center center no-repeat;
+    -webkit-background-size:cover; background-size:cover; position:relative; overflow:hidden; }
+  .semFoto { position:absolute; left:0; right:0; top:50%; margin-top:-0.6em; text-align:center;
+    font-size:2.2em; line-height:1.2em; color:#B9A88C; font-weight:bold; }
+  #opcoes { width:100%; white-space:nowrap; font-size:0; }
+  .opcao { display:inline-block; width:32%; height:100%; margin-right:2%; vertical-align:top;
+    border-radius:0.4em; background:#EADFCC center center no-repeat; -webkit-background-size:cover; background-size:cover;
+    position:relative; overflow:hidden; font-size:16px; border:2px solid transparent; }
+  .opcao:last-child { margin-right:0; }
+  .opcao .rot { position:absolute; left:0; right:0; bottom:0; padding:0.25em 0.35em; font-size:0.75em;
+    color:#fff; background:rgba(43,33,24,.72); white-space:normal; line-height:1.15em; }
+  .opcao.vazia { background:transparent; border:2px dashed #E3D7C3; }
+  .opcao .ini { position:absolute; left:0; right:0; top:28%; text-align:center; font-size:1.4em; color:#B9A88C; font-weight:bold; }
+
+  #colDir { width:44%; padding-left:0.2em; }
+  #etiqueta { font-size:0.75em; text-transform:uppercase; letter-spacing:0.12em; color:#C8553D; font-weight:bold; }
+  #nome { font-size:1.6em; line-height:1.15em; font-weight:bold; margin:0.15em 0 0.35em; }
+  #ingWrap { overflow:hidden; }
+  #ingredientes { list-style:none; font-size:0.95em; line-height:1.45em; }
+  #ingredientes li:before { content:"• "; color:#4F7C5A; font-weight:bold; }
+  #video { width:100%; border-radius:0.5em; background:#2B2118 center center no-repeat;
+    -webkit-background-size:cover; background-size:cover; position:relative; overflow:hidden; margin-top:0.4em; }
+  #video .play { position:absolute; left:50%; top:50%; width:2.6em; height:2.6em; margin:-1.3em 0 0 -1.3em;
+    border-radius:50%; background:rgba(200,85,61,.92); color:#fff; text-align:center; line-height:2.6em; font-size:1em; }
+  #video .txt { position:absolute; left:0; right:0; bottom:0; padding:0.3em 0.5em; color:#fff; font-size:0.8em;
+    background:rgba(0,0,0,.55); }
+  #video.vazio { background:#F3ECE0; }
+  #video.vazio .txt { background:transparent; color:#B9A88C; text-align:center; bottom:auto; top:40%; }
+
+  /* ---------- Calendário ---------- */
+  #mes { font-size:1.15em; font-weight:bold; padding:0.45em 0.2em 0.25em; }
+  #mes span { float:right; font-size:0.65em; font-weight:normal; color:#8C7B63; padding-top:0.45em; }
+  #cal { width:100%; border-collapse:separate; border-spacing:0.25em; table-layout:fixed; margin:0 -0.25em; }
+  #cal th { font-size:0.7em; text-transform:uppercase; color:#8C7B63; font-weight:bold; padding-bottom:0.1em; }
+  #cal td { background:#fff; border-radius:0.35em; vertical-align:top; padding:0; overflow:hidden;
+    border:2px solid #F0E6D6; }
+  #cal td.fora { background:transparent; border-color:transparent; }
+  #cal td.hoje { background:#C8553D; border-color:#C8553D; color:#fff; }
+  #cal td.sel { border-color:#4F7C5A; }
+  #cal td.hoje.sel { border-color:#2B2118; }
+  .cel { overflow:hidden; padding:0.25em 0.3em; }
+  .dia { font-size:0.8em; font-weight:bold; }
+  .pratoDia { font-size:0.68em; line-height:1.2em; margin-top:0.15em; overflow:hidden; }
+  #cal td.passado { opacity:0.55; }
+
+  /* ---------- Recado ---------- */
+  #recado { margin-top:0.4em; border-radius:2em; background:#4F7C5A; color:#fff; text-align:center;
+    padding:0 1em; overflow:hidden; display:table; width:100%; }
+  #recado div { display:table-cell; vertical-align:middle; font-size:1.15em; }
+
+  #status { position:absolute; right:0.6em; bottom:0.15em; font-size:0.55em; color:#B9A88C; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topo">
+    <div class="col" id="colEsq">
+      <div id="foto"></div>
+      <div id="opcoes"></div>
+    </div>
+    <div class="col" id="colDir">
+      <div id="etiqueta">Prato de hoje</div>
+      <div id="nome">Carregando…</div>
+      <div id="ingWrap"><ul id="ingredientes"></ul></div>
+      <div id="video"></div>
+    </div>
+  </div>
+
+  <div id="mes"></div>
+  <table id="cal"></table>
+
+  <div id="recado"><div id="recadoTxt"></div></div>
+</div>
+<div id="status"></div>
+
+<script>
+/* ===================== CONFIGURAÇÃO ===================== */
+var CONFIG = {
+  SHEET_ID: '1uNa7WL9nqg9LG2rDGXdFQ1WjixbBDuD3sgYimkrUCVU', // ID da Google Planilha (vazio = modo demonstração)
+  ABA_CALENDARIO: 'gid=0',          // aba Calendario (número gid que aparece na URL da planilha)
+  ABA_PRATOS: 'gid=525425255',      // aba Pratos
+  ATUALIZAR_MIN: 10,            // busca a planilha de novo a cada X minutos
+  VOLTAR_HOJE_SEG: 90,          // depois de tocar em outro dia, volta para hoje após X segundos
+  SEMANA_COMECA_SEGUNDA: false, // false = domingo primeiro
+  RECADO_PADRAO: 'Bom apetite! 😊'
+};
+
+/* ===================== UTILITÁRIOS ===================== */
+var MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+var DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function $(id){ return document.getElementById(id); }
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+function chave(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function hoje(){ var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function trim(s){ return String(s == null ? '' : s).replace(/^\s+|\s+$/g, ''); }
+function norm(s){
+  var a = 'áàâãäéèêëíìîïóòôõöúùûüçñ', b = 'aaaaaeeeeiiiiooooouuuucn';
+  s = trim(s).toLowerCase(); var r = '';
+  for (var i = 0; i < s.length; i++){ var k = a.indexOf(s.charAt(i)); r += k >= 0 ? b.charAt(k) : s.charAt(i); }
+  return r.replace(/\s+/g, ' ');
+}
+function iniciais(nome){
+  var p = trim(nome).split(/\s+/); var r = '';
+  for (var i = 0; i < p.length && r.length < 2; i++){ if (p[i].length > 2) r += p[i].charAt(0).toUpperCase(); }
+  return r || (nome ? nome.charAt(0).toUpperCase() : '?');
+}
+function parseData(v){
+  if (v == null || v === '') return null;
+  var s = String(v), m;
+  if ((m = s.match(/Date\((\d+),(\d+),(\d+)/))) return new Date(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return new Date(+m[3], +m[2] - 1, +m[1]);
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+function urlFoto(u){
+  u = trim(u); if (!u) return '';
+  var m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]+)/);
+  if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1200';
+  return u;
+}
+function idYoutube(u){
+  var m = String(u || '').match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  return m ? m[1] : '';
+}
+function listaIngredientes(s){
+  var p = String(s || '').split(/;|\n/), r = [];
+  for (var i = 0; i < p.length; i++){ var t = trim(p[i]); if (t) r.push(t); }
+  return r;
+}
+
+/* ===================== DADOS ===================== */
+var DADOS = { pratos: {}, cal: {} };
+
+function montarDados(linhasCal, linhasPratos){
+  var pratos = {}, cal = {}, i, k;
+  for (i = 0; i < linhasPratos.length; i++){
+    var p = linhasPratos[i]; if (!trim(p.nome)) continue;
+    pratos[norm(p.nome)] = { nome: trim(p.nome), ingredientes: listaIngredientes(p.ingredientes),
+      foto: urlFoto(p.foto), video: trim(p.video) };
+  }
+  for (i = 0; i < linhasCal.length; i++){
+    var l = linhasCal[i], d = parseData(l.data); if (!d) continue;
+    var ops = [];
+    for (k in l){ if (l.hasOwnProperty(k) && k.indexOf('opcao') === 0 && trim(l[k])) ops.push({ k: k, v: trim(l[k]) }); }
+    ops.sort(function(a, b){ return a.k < b.k ? -1 : 1; });
+    var nomes = []; for (k = 0; k < ops.length; k++) nomes.push(ops[k].v);
+    cal[chave(d)] = { prato: trim(l.prato), opcoes: nomes, recado: trim(l.recado) };
+  }
+  return { pratos: pratos, cal: cal };
+}
+
+function infoPrato(nome){
+  if (!nome) return null;
+  return DADOS.pratos[norm(nome)] || { nome: nome, ingredientes: [], foto: '', video: '' };
+}
+
+/* Leitura da Google Planilha por JSONP (sem CORS) */
+var cbN = 0;
+function carregarAba(aba, ok, erro){
+  var nome = '__cardapio' + (cbN++), s = document.createElement('script'), feito = false;
+  var timer = setTimeout(function(){ fim(); erro('tempo esgotado'); }, 25000);
+  function fim(){ feito = true; clearTimeout(timer); window[nome] = function(){}; if (s.parentNode) s.parentNode.removeChild(s); }
+  window[nome] = function(resp){
+    if (feito) return; fim();
+    if (!resp || resp.status === 'error' || !resp.table){ erro('planilha sem permissão ou aba "' + aba + '" não encontrada'); return; }
+    ok(tabelaParaObjetos(resp.table));
+  };
+  s.onerror = function(){ if (!feito){ fim(); erro('sem conexão'); } };
+  s.src = 'https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID + '/gviz/tq?tqx=responseHandler:' + nome +
+          '&headers=1&' + (aba.indexOf('gid=') === 0 ? aba : 'sheet=' + encodeURIComponent(aba)) + '&t=' + new Date().getTime();
+  document.getElementsByTagName('head')[0].appendChild(s);
+}
+function tabelaParaObjetos(t){
+  var cols = [], out = [], i, j;
+  for (i = 0; i < t.cols.length; i++) cols.push(norm(t.cols[i].label || t.cols[i].id));
+  for (i = 0; i < t.rows.length; i++){
+    var o = {}, c = t.rows[i].c || [];
+    for (j = 0; j < cols.length; j++){
+      var cel = c[j], v = '';
+      if (cel && cel.v != null){
+        v = (t.cols[j].type === 'date' || t.cols[j].type === 'datetime') ? cel.v : (cel.f != null && t.cols[j].type !== 'string' ? cel.f : cel.v);
+      }
+      o[cols[j]] = v;
+    }
+    out.push(o);
+  }
+  return out;
+}
+
+function atualizar(){
+  if (!CONFIG.SHEET_ID){ DADOS = dadosDemo(); status('modo demonstração'); render(); return; }
+  carregarAba(CONFIG.ABA_PRATOS, function(pratos){
+    carregarAba(CONFIG.ABA_CALENDARIO, function(cal){
+      DADOS = montarDados(cal, pratos);
+      try { localStorage.setItem('cardapio_cache', JSON.stringify(DADOS)); } catch(e){}
+      var a = new Date(); status('atualizado ' + pad(a.getHours()) + ':' + pad(a.getMinutes()));
+      render();
+    }, falhou);
+  }, falhou);
+}
+function falhou(msg){
+  try { var c = localStorage.getItem('cardapio_cache'); if (c){ DADOS = JSON.parse(c); render(); } } catch(e){}
+  status('offline: ' + msg);
+}
+function status(t){ $('status').innerHTML = esc(t); }
+
+/* ===================== ESTADO E TELA ===================== */
+var EST = { dia: hoje(), escolhido: 0, timerVolta: null, hojeChave: chave(hoje()) };
+
+function selecionarDia(d){
+  EST.dia = d; EST.escolhido = 0; render(); agendarVolta();
+}
+function agendarVolta(){
+  if (EST.timerVolta) clearTimeout(EST.timerVolta);
+  EST.timerVolta = setTimeout(function(){ EST.dia = hoje(); EST.escolhido = 0; render(); }, CONFIG.VOLTAR_HOJE_SEG * 1000);
+}
+
+function render(){ renderPrato(); renderCalendario(); layout(); }
+
+function renderPrato(){
+  var ent = DADOS.cal[chave(EST.dia)];
+  var lista = [];
+  if (ent){ if (ent.prato) lista.push(ent.prato); for (var i = 0; i < ent.opcoes.length; i++) lista.push(ent.opcoes[i]); }
+  if (EST.escolhido >= lista.length) EST.escolhido = 0;
+  var p = infoPrato(lista[EST.escolhido]);
+
+  var eHoje = chave(EST.dia) === chave(hoje());
+  var rot = eHoje ? 'Prato de hoje' : DIAS[EST.dia.getDay()] + ', ' + EST.dia.getDate() + ' de ' + MESES[EST.dia.getMonth()].toLowerCase();
+  if (EST.escolhido > 0) rot += ' · opção';
+  $('etiqueta').innerHTML = esc(rot);
+
+  if (!p){
+    $('nome').innerHTML = 'Sem prato definido';
+    $('ingredientes').innerHTML = '';
+    $('foto').style.backgroundImage = 'none';
+    $('foto').innerHTML = '<div class="semFoto">🍽</div>';
+    renderVideo('');
+  } else {
+    $('nome').innerHTML = esc(p.nome);
+    var h = ''; for (var j = 0; j < p.ingredientes.length; j++) h += '<li>' + esc(p.ingredientes[j]) + '</li>';
+    $('ingredientes').innerHTML = h;
+    if (p.foto){ $('foto').style.backgroundImage = 'url("' + p.foto + '")'; $('foto').innerHTML = ''; }
+    else { $('foto').style.backgroundImage = 'none'; $('foto').innerHTML = '<div class="semFoto">' + esc(iniciais(p.nome)) + '</div>'; }
+    renderVideo(p.video);
+  }
+
+  // as 3 caixinhas mostram os pratos do dia que não estão em destaque
+  var outras = [];
+  for (var k = 0; k < lista.length; k++) if (k !== EST.escolhido) outras.push(k);
+  var html = '';
+  for (var n = 0; n < 3; n++){
+    if (n < outras.length){
+      var op = infoPrato(lista[outras[n]]);
+      var bg = op.foto ? ' style="background-image:url(&quot;' + esc(op.foto) + '&quot;)"' : '';
+      html += '<div class="opcao" data-i="' + outras[n] + '"' + bg + '>' + (op.foto ? '' : '<div class="ini">' + esc(iniciais(op.nome)) + '</div>') +
+              '<div class="rot">' + esc(op.nome) + '</div></div>';
+    } else {
+      html += '<div class="opcao vazia"></div>';
+    }
+  }
+  $('opcoes').innerHTML = html;
+  var caixas = $('opcoes').getElementsByTagName('div');
+  for (var c = 0; c < caixas.length; c++){
+    if (caixas[c].className === 'opcao'){
+      caixas[c].onclick = (function(i){ return function(){ EST.escolhido = i; renderPrato(); layout(); agendarVolta(); }; })(+caixas[c].getAttribute('data-i'));
+    }
+  }
+
+  $('recadoTxt').innerHTML = esc((ent && ent.recado) || CONFIG.RECADO_PADRAO);
+}
+
+function renderVideo(url){
+  var v = $('video'), id = idYoutube(url);
+  v.onclick = null;
+  if (!url){ v.className = 'vazio'; v.style.backgroundImage = 'none'; v.innerHTML = '<div class="txt">Sem vídeo</div>'; return; }
+  v.className = '';
+  v.style.backgroundImage = id ? 'url("https://img.youtube.com/vi/' + id + '/hqdefault.jpg")' : 'none';
+  v.innerHTML = '<div class="play">▶</div><div class="txt">Vídeo de como fazer</div>';
+  v.onclick = function(){ window.open(id ? 'https://www.youtube.com/watch?v=' + id : url, '_blank'); };
+}
+
+function renderCalendario(){
+  var ref = EST.dia, ano = ref.getFullYear(), mes = ref.getMonth();
+  var h = hoje(), kHoje = chave(h), kSel = chave(EST.dia);
+  $('mes').innerHTML = esc(MESES[mes] + ' ' + ano) + '<span>toque num dia para ver o prato</span>';
+
+  var ini = CONFIG.SEMANA_COMECA_SEGUNDA ? 1 : 0, html = '<tr>', i;
+  for (i = 0; i < 7; i++) html += '<th>' + DIAS[(i + ini) % 7] + '</th>';
+  html += '</tr>';
+
+  var primeiro = new Date(ano, mes, 1), desloc = (primeiro.getDay() - ini + 7) % 7;
+  var diasMes = new Date(ano, mes + 1, 0).getDate(), total = Math.ceil((desloc + diasMes) / 7) * 7;
+  for (i = 0; i < total; i++){
+    if (i % 7 === 0) html += '<tr>';
+    var dia = i - desloc + 1;
+    if (dia < 1 || dia > diasMes){ html += '<td class="fora"></td>'; }
+    else {
+      var d = new Date(ano, mes, dia), k = chave(d), ent = DADOS.cal[k], cls = [];
+      if (k === kHoje) cls.push('hoje'); else if (d < h) cls.push('passado');
+      if (k === kSel) cls.push('sel');
+      html += '<td class="' + cls.join(' ') + '" data-d="' + dia + '"><div class="cel"><div class="dia">' + dia + '</div>' +
+              '<div class="pratoDia">' + esc(ent && ent.prato ? ent.prato : '') + '</div></div></td>';
+    }
+    if (i % 7 === 6) html += '</tr>';
+  }
+  $('cal').innerHTML = html;
+  var tds = $('cal').getElementsByTagName('td');
+  for (i = 0; i < tds.length; i++){
+    var dd = tds[i].getAttribute('data-d');
+    if (dd) tds[i].onclick = (function(n){ return function(){ selecionarDia(new Date(ano, mes, n)); }; })(+dd);
+  }
+}
+
+/* Alturas em pixels calculadas por JS */
+function layout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  var base = Math.max(11, Math.round(Math.min(W, H * 0.8) / 34));
+  document.body.style.fontSize = base + 'px';
+  var pad = base * 0.6;
+  var util = H - pad * 2;
+  var hTopo = Math.round(util * 0.40);
+  var hRecado = Math.round(util * 0.08);
+  var hMes = $('mes').offsetHeight || base * 2;
+  var hCal = util - hTopo - hRecado - hMes - base * 0.8;
+
+  var interno = hTopo - base * 1.2;
+  $('foto').style.height = Math.round(interno * 0.70) + 'px';
+  $('opcoes').style.height = Math.round(interno * 0.30 - base * 0.5) + 'px';
+  $('video').style.height = Math.round(interno * 0.38) + 'px';
+  $('topo').style.height = hTopo + 'px';
+  var usado = $('etiqueta').offsetHeight + $('nome').offsetHeight + base * 0.8;
+  $('ingWrap').style.height = Math.max(0, Math.round(interno - interno * 0.38 - usado)) + 'px';
+
+  $('opcoes').style.marginTop = Math.round(base * 0.5) + 'px';
+  $('recado').style.height = hRecado + 'px';
+  // calendário: define a altura de cada célula e ajusta até caber exatamente na tela
+  var cels = $('cal').getElementsByTagName('div'), lista = [], i;
+  for (i = 0; i < cels.length; i++) if (cels[i].className === 'cel') lista.push(cels[i]);
+  var linhas = Math.max(1, $('cal').getElementsByTagName('tr').length - 1);
+  var hCel = Math.max(20, Math.floor((hCal - base * 1.4 - base * 0.25 * (linhas + 1)) / linhas));
+  for (var tent = 0; tent < 4; tent++){
+    for (i = 0; i < lista.length; i++) lista[i].style.height = hCel + 'px';
+    var sobra = H - ($('recado').offsetTop + $('recado').offsetHeight + pad);
+    if (Math.abs(sobra) < 3) break;
+    hCel = Math.max(20, hCel + Math.floor(sobra / linhas));
+  }
+}
+
+/* ===================== MODO DEMONSTRAÇÃO ===================== */
+function dadosDemo(){
+  var pratos = [
+    ['Frango assado com batatas', 'frango; batata; alho; alecrim; azeite'],
+    ['Strogonoff de carne', 'alcatra em tiras; creme de leite; champignon; arroz; batata palha'],
+    ['Feijoada leve', 'feijão preto; linguiça; lombo; couve; laranja'],
+    ['Escondidinho de carne seca', 'carne seca; mandioca; queijo; manteiga'],
+    ['Peixe grelhado com legumes', 'tilápia; abobrinha; cenoura; limão'],
+    ['Lasanha à bolonhesa', 'massa de lasanha; carne moída; molho de tomate; queijo; presunto'],
+    ['Arroz carreteiro', 'arroz; carne seca; linguiça; cebola; cheiro-verde'],
+    ['Panqueca de frango', 'massa de panqueca; frango desfiado; molho de tomate; queijo'],
+    ['Bife acebolado', 'bife; cebola; arroz; feijão; salada']
+  ];
+  var linhasP = [], linhasC = [], i;
+  for (i = 0; i < pratos.length; i++) linhasP.push({ nome: pratos[i][0], ingredientes: pratos[i][1], foto: '', video: '' });
+  var h = hoje(), ano = h.getFullYear(), mes = h.getMonth(), dias = new Date(ano, mes + 1, 0).getDate();
+  var recados = ['Bom apetite! 😊', 'Hoje tem sobremesa na geladeira!', 'Lembrar de descongelar o frango de amanhã', '', 'Feira amanhã cedo 🥕'];
+  for (i = 1; i <= dias; i++){
+    linhasC.push({ data: ano + '-' + pad(mes + 1) + '-' + pad(i), prato: pratos[i % 9][0],
+      'opcao 1': pratos[(i + 2) % 9][0], 'opcao 2': pratos[(i + 4) % 9][0], 'opcao 3': i % 3 ? pratos[(i + 6) % 9][0] : '',
+      recado: recados[i % recados.length] });
+  }
+  return montarDados(linhasC, linhasP);
+}
+
+/* ===================== INÍCIO ===================== */
+window.onresize = function(){ layout(); };
+document.body.onclick = function(){ if (chave(EST.dia) !== chave(hoje()) || EST.escolhido) agendarVolta(); };
+atualizar();
+setInterval(atualizar, CONFIG.ATUALIZAR_MIN * 60 * 1000);
+// virou o dia? volta para "hoje"
+setInterval(function(){
+  var k = chave(hoje());
+  if (k !== EST.hojeChave){ EST.hojeChave = k; EST.dia = hoje(); EST.escolhido = 0; atualizar(); }
+}, 60 * 1000);
+</script>
+</body>
+</html>

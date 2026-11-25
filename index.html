@@ -16,6 +16,10 @@
     - ingredientes: separados por ";" (ou um por linha dentro da célula)
     - foto: link de imagem OU link do Google Drive (arquivo compartilhado)
     - video: link do YouTube
+
+  REGRA DOS 2 DIAS: o prato feito num dia é comido também no dia seguinte.
+    Na planilha, coloque o prato só no dia em que ele é feito; o dia seguinte
+    (se não tiver prato próprio) mostra o mesmo prato como "sobra de ontem".
 -->
 <style>
   * { margin:0; padding:0; -webkit-box-sizing:border-box; box-sizing:border-box; }
@@ -66,8 +70,14 @@
   #video.vazio .txt { background:transparent; color:#B9A88C; text-align:center; bottom:auto; top:40%; }
 
   /* ---------- Calendário ---------- */
-  #mes { font-size:1.15em; font-weight:bold; padding:0.45em 0.2em 0.25em; }
-  #mes span { float:right; font-size:0.65em; font-weight:normal; color:#8C7B63; padding-top:0.45em; }
+  #mes { display:table; width:100%; table-layout:fixed; padding:0.35em 0 0.2em; }
+  #mes > div { display:table-cell; vertical-align:middle; }
+  #mes .seta { width:2.6em; }
+  #mes .seta div { height:1.9em; line-height:1.75em; border-radius:0.45em; background:#fff; border:2px solid #F0E6D6;
+    text-align:center; color:#C8553D; font-size:1.25em; font-weight:bold; }
+  #mesTit { padding:0 0.5em; font-size:1.15em; font-weight:bold; white-space:nowrap; overflow:hidden; }
+  #mesTit span { float:right; font-size:0.62em; font-weight:normal; color:#8C7B63; padding-top:0.45em; }
+  #mesTit span.voltar { color:#C8553D; font-weight:bold; }
   #cal { width:100%; border-collapse:separate; border-spacing:0.25em; table-layout:fixed; margin:0 -0.25em; }
   #cal th { font-size:0.7em; text-transform:uppercase; color:#8C7B63; font-weight:bold; padding-bottom:0.1em; }
   #cal td { background:#fff; border-radius:0.35em; vertical-align:top; padding:0; overflow:hidden;
@@ -80,6 +90,7 @@
   .dia { font-size:0.8em; font-weight:bold; }
   .pratoDia { font-size:0.68em; line-height:1.2em; margin-top:0.15em; overflow:hidden; }
   #cal td.passado { opacity:0.55; }
+  .pratoDia.sobra { font-style:italic; opacity:0.7; }
 
   /* ---------- Recado ---------- */
   #recado { margin-top:0.4em; border-radius:2em; background:#4F7C5A; color:#fff; text-align:center;
@@ -109,7 +120,11 @@
     </div>
   </div>
 
-  <div id="mes"></div>
+  <div id="mes">
+    <div class="seta"><div id="mesAnt">‹</div></div>
+    <div id="mesTit"></div>
+    <div class="seta"><div id="mesProx">›</div></div>
+  </div>
   <table id="cal"></table>
 
   <div id="recado"><div id="recadoTxt"></div></div>
@@ -198,6 +213,17 @@ function montarDados(linhasCal, linhasPratos){
   return { pratos: pratos, cal: cal };
 }
 
+/* Regra dos 2 dias: o prato feito num dia vale também para o dia seguinte.
+   Um dia sem prato próprio herda o prato da véspera (marcado como sobra). */
+function entradaDoDia(d){
+  var own = DADOS.cal[chave(d)];
+  if (own && own.prato) return own;
+  var ontem = DADOS.cal[chave(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1))];
+  if (ontem && ontem.prato) return { prato: ontem.prato, opcoes: ontem.opcoes, recado: own ? own.recado : '', sobra: true };
+  return own || null;
+}
+function temPratoProprio(d){ var e = DADOS.cal[chave(d)]; return !!(e && e.prato); }
+
 function infoPrato(nome){
   if (!nome) return null;
   return DADOS.pratos[norm(nome)] || { nome: nome, ingredientes: [], foto: '', video: '' };
@@ -254,20 +280,29 @@ function falhou(msg){
 function status(t){ $('status').innerHTML = esc(t); }
 
 /* ===================== ESTADO E TELA ===================== */
-var EST = { dia: hoje(), escolhido: 0, timerVolta: null, hojeChave: chave(hoje()) };
+function inicioMes(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+var EST = { dia: hoje(), mesVer: inicioMes(hoje()), escolhido: 0, timerVolta: null, hojeChave: chave(hoje()) };
 
 function selecionarDia(d){
   EST.dia = d; EST.escolhido = 0; render(); agendarVolta();
 }
+function voltarHoje(){ EST.dia = hoje(); EST.mesVer = inicioMes(EST.dia); EST.escolhido = 0; render(); }
+function foraDeHoje(){
+  return chave(EST.dia) !== chave(hoje()) || EST.escolhido || chave(EST.mesVer) !== chave(inicioMes(hoje()));
+}
+function mudarMes(n){
+  EST.mesVer = new Date(EST.mesVer.getFullYear(), EST.mesVer.getMonth() + n, 1);
+  renderCalendario(); layout(); agendarVolta();
+}
 function agendarVolta(){
   if (EST.timerVolta) clearTimeout(EST.timerVolta);
-  EST.timerVolta = setTimeout(function(){ if ($('player').style.display === 'block') return; EST.dia = hoje(); EST.escolhido = 0; render(); }, CONFIG.VOLTAR_HOJE_SEG * 1000);
+  EST.timerVolta = setTimeout(function(){ if ($('player').style.display === 'block') return; voltarHoje(); }, CONFIG.VOLTAR_HOJE_SEG * 1000);
 }
 
 function render(){ renderPrato(); renderCalendario(); layout(); }
 
 function renderPrato(){
-  var ent = DADOS.cal[chave(EST.dia)];
+  var ent = entradaDoDia(EST.dia);
   var lista = [];
   if (ent){ if (ent.prato) lista.push(ent.prato); for (var i = 0; i < ent.opcoes.length; i++) lista.push(ent.opcoes[i]); }
   if (EST.escolhido >= lista.length) EST.escolhido = 0;
@@ -275,7 +310,10 @@ function renderPrato(){
 
   var eHoje = chave(EST.dia) === chave(hoje());
   var rot = eHoje ? 'Prato de hoje' : DIAS[EST.dia.getDay()] + ', ' + EST.dia.getDate() + ' de ' + MESES[EST.dia.getMonth()].toLowerCase();
+  if (eHoje && EST.escolhido === 0 && ent && ent.prato) rot = 'Hoje';
   if (EST.escolhido > 0) rot += ' · opção';
+  else if (ent && ent.sobra) rot += ' · sobra de ontem';
+  else if (ent && ent.prato && !temPratoProprio(new Date(EST.dia.getFullYear(), EST.dia.getMonth(), EST.dia.getDate() + 1))) rot += ' · rende 2 dias';
   $('etiqueta').innerHTML = esc(rot);
 
   if (!p){
@@ -344,13 +382,16 @@ function fecharVideo(){
   var pl = $('player'), fs = pl.getElementsByTagName('iframe');
   while (fs.length) pl.removeChild(fs[0]);
   pl.style.display = 'none';
-  if (chave(EST.dia) !== chave(hoje()) || EST.escolhido) agendarVolta();
+  if (foraDeHoje()) agendarVolta();
 }
 
 function renderCalendario(){
-  var ref = EST.dia, ano = ref.getFullYear(), mes = ref.getMonth();
+  var ref = EST.mesVer, ano = ref.getFullYear(), mes = ref.getMonth();
   var h = hoje(), kHoje = chave(h), kSel = chave(EST.dia);
-  $('mes').innerHTML = esc(MESES[mes] + ' ' + ano) + '<span>toque num dia para ver o prato</span>';
+  var noMesAtual = ano === h.getFullYear() && mes === h.getMonth();
+  $('mesTit').innerHTML = esc(MESES[mes] + ' ' + ano) +
+    (noMesAtual ? '<span>toque num dia</span>' : '<span class="voltar" id="irHoje">↩ hoje</span>');
+  if (!noMesAtual) $('irHoje').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); voltarHoje(); };
 
   var ini = CONFIG.SEMANA_COMECA_SEGUNDA ? 1 : 0, html = '<tr>', i;
   for (i = 0; i < 7; i++) html += '<th>' + DIAS[(i + ini) % 7] + '</th>';
@@ -363,11 +404,12 @@ function renderCalendario(){
     var dia = i - desloc + 1;
     if (dia < 1 || dia > diasMes){ html += '<td class="fora"></td>'; }
     else {
-      var d = new Date(ano, mes, dia), k = chave(d), ent = DADOS.cal[k], cls = [];
+      var d = new Date(ano, mes, dia), k = chave(d), ent = entradaDoDia(d), cls = [];
       if (k === kHoje) cls.push('hoje'); else if (d < h) cls.push('passado');
       if (k === kSel) cls.push('sel');
+      var sobra = ent && ent.sobra;
       html += '<td class="' + cls.join(' ') + '" data-d="' + dia + '"><div class="cel"><div class="dia">' + dia + '</div>' +
-              '<div class="pratoDia">' + esc(ent && ent.prato ? ent.prato : '') + '</div></div></td>';
+              '<div class="pratoDia' + (sobra ? ' sobra' : '') + '">' + (sobra ? '↺ ' : '') + esc(ent && ent.prato ? ent.prato : '') + '</div></div></td>';
     }
     if (i % 7 === 6) html += '</tr>';
   }
@@ -442,6 +484,8 @@ function dadosDemo(){
   var h = hoje(), ano = h.getFullYear(), mes = h.getMonth(), dias = new Date(ano, mes + 1, 0).getDate();
   var recados = ['Bom apetite! 😊', 'Hoje tem sobremesa na geladeira!', 'Lembrar de descongelar o frango de amanhã', '', 'Feira amanhã cedo 🥕'];
   for (i = 1; i <= dias; i++){
+    var sem = new Date(ano, mes, i).getDay();
+    if (sem !== 1 && sem !== 3 && sem !== 5) continue; // demonstração: cozinha seg/qua/sex, cada prato rende 2 dias
     linhasC.push({ data: ano + '-' + pad(mes + 1) + '-' + pad(i), prato: pratos[i % 9][0],
       'opcao 1': pratos[(i + 2) % 9][0], 'opcao 2': pratos[(i + 4) % 9][0], 'opcao 3': i % 3 ? pratos[(i + 6) % 9][0] : '',
       recado: recados[i % recados.length] });
@@ -455,13 +499,15 @@ $('fechar').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation
 $('ingWrap').onscroll = function(){ avisoMais(); agendarVolta(); };
 // abre a planilha na mesma janela (o Fully bloqueia pop-ups); para voltar, use o botão Voltar do Android
 $('planilha').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); window.location.href = CONFIG.LINK_PLANILHA; };
-document.body.onclick = function(){ if ($('player').style.display === 'block') return; if (chave(EST.dia) !== chave(hoje()) || EST.escolhido) agendarVolta(); };
+$('mesAnt').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); mudarMes(-1); };
+$('mesProx').onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); mudarMes(1); };
+document.body.onclick = function(){ if ($('player').style.display === 'block') return; if (foraDeHoje()) agendarVolta(); };
 atualizar();
 setInterval(atualizar, CONFIG.ATUALIZAR_MIN * 60 * 1000);
 // virou o dia? volta para "hoje"
 setInterval(function(){
   var k = chave(hoje());
-  if (k !== EST.hojeChave){ EST.hojeChave = k; EST.dia = hoje(); EST.escolhido = 0; atualizar(); }
+  if (k !== EST.hojeChave){ EST.hojeChave = k; EST.dia = hoje(); EST.mesVer = inicioMes(EST.dia); EST.escolhido = 0; atualizar(); }
 }, 60 * 1000);
 </script>
 </body>
